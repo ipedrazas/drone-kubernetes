@@ -5,7 +5,8 @@ Kubernetes plugin for publishing kubernetes artifacts by [@ipedrazas](https://gi
 
 This plugin is responsible for publishing artifacts to a kubernetes cluster:
 
-```./drone-kubernetes <<EOF
+```
+sh ./drone-kubernetes <<EOF
 {
     "vargs": {
         "replicationcontrollers": [ "example/nginx.json" ],
