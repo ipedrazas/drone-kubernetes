@@ -4,19 +4,18 @@ import (
 	"bytes"
 	"crypto/tls"
 	"fmt"
-	"github.com/drone/drone-go/drone"
-	"github.com/drone/drone-go/plugin"
+	"github.com/drone/drone-plugin-go/plugin"
 	"io/ioutil"
 	"net/http"
 	"os"
 )
 
-func createArtifact(artifact string, url string, token string) {
+func createArtifact(artifact string, url string, token string, workspace string) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
-	file, e := ioutil.ReadFile(workspace.Path + artifact)
+	file, e := ioutil.ReadFile(workspace + artifact)
 	fmt.Println(file)
 	if e != nil {
 		fmt.Println(e)
@@ -59,9 +58,9 @@ func main() {
 
 	// Iterate over rcs and svcs
 	for _, rc := range vargs.ReplicationControllers {
-		createArtifact(rc, rc_url, vargs.Token)
+		createArtifact(rc, rc_url, vargs.Token, workspace.Path)
 	}
 	for _, rc := range vargs.Services {
-		createArtifact(rc, svc_url, vargs.Token)
+		createArtifact(rc, svc_url, vargs.Token, workspace.Path)
 	}
 }
