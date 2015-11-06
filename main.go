@@ -15,7 +15,7 @@ func createArtifact(artifact string, url string, token string, workspace string)
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
-	file, e := ioutil.ReadFile(workspace + artifact)
+	file, e := ioutil.ReadFile(workspace + "/" + artifact)
 	fmt.Println(file)
 	if e != nil {
 		fmt.Println(e)
