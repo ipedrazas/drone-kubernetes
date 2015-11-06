@@ -11,9 +11,10 @@ The following is a sample Kubernetes configuration in your .drone.yml file:
 ```yaml
 publish:
   kubernetes:
-    artifacts:
+    replicationcontrollers:
         - kubernetes/nginx-rc.json
         - kubernetes/nginx-svc.json
+    services:
     apiserver: https://127.0.0.1
     namespace: default
     token: $$TOKEN

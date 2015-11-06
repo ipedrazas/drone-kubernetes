@@ -16,8 +16,10 @@ func createArtifact(artifact string, url string, token string) {
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
-	file, e := ioutil.ReadFile(artifact)
+	file, e := ioutil.ReadFile(workspace.Path + artifact)
+	fmt.Println(file)
 	if e != nil {
+		fmt.Println(e)
 		os.Exit(1)
 	}
 	// post payload to each artifact
@@ -30,17 +32,15 @@ func createArtifact(artifact string, url string, token string) {
 		panic(err)
 	}
 	defer resp.Body.Close()
-	// contents, err := ioutil.ReadAll(resp.Body)
-	// if err != nil {
-	// 	os.Exit(1)
-	// }
-	// fmt.Printf("%s\n", string(contents))
+	contents, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		os.Exit(1)
+	}
+	fmt.Printf("%s\n", string(contents))
 
 }
 
 func main() {
-	var repo = drone.Repo{}
-	var build = drone.Build{}
 	var vargs = struct {
 		ReplicationControllers []string `json:"replicationcontrollers"`
 		Services               []string `json:"services"`
@@ -49,8 +49,8 @@ func main() {
 		Namespace              string   `json:namespace`
 	}{}
 
-	plugin.Param("repo", &repo)
-	plugin.Param("build", &build)
+	workspace := plugin.Workspace{}
+	plugin.Param("workspace", &workspace)
 	plugin.Param("vargs", &vargs)
 	plugin.Parse()
 
