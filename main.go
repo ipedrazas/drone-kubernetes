@@ -10,13 +10,32 @@ import (
 	"os"
 )
 
+var kubeConf *KubeConf
+
+type KubeConf struct {
+	ApiServer string `json:apiserver`
+	Token     string `json:token`
+	Namespace string `json:namespace`
+}
+
+type Artifact struct {
+	Name      string
+	Update    string // overwrite, rolling-update
+	Namespace string
+	Type      string // rcs, svcs
+}
+
+func (a Artifact) Exists() bool {
+	return true
+}
+
 func createArtifact(artifact string, url string, token string, workspace string) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
 	file, e := ioutil.ReadFile(workspace + "/" + artifact)
-	fmt.Println(file)
+	fmt.Println(string(file))
 	if e != nil {
 		fmt.Println(e)
 		os.Exit(1)
