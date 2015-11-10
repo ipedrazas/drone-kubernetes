@@ -10,38 +10,75 @@ import (
 	"os"
 )
 
-var kubeConf *KubeConf
-
-type KubeConf struct {
-	ApiServer string `json:apiserver`
-	Token     string `json:token`
-	Namespace string `json:namespace`
-}
-
 type Artifact struct {
-	Name      string
-	Update    string // overwrite, rolling-update
-	Namespace string
-	Type      string // rcs, svcs
+	ApiVersion string
+	Kind       string
+	Data       []byte
+	Metadata   struct {
+		Name string
+	}
+	Url string
 }
 
-func (a Artifact) Exists() bool {
-	return true
+// Kubernetes API doesn't delete pods when deleting an RC
+// to cleanly remove the rc we have to set `replicas=0`
+// and then delete the RC
+func deleteArtifact(artifact Artifact, token string) (bool, error) {
+	url := fmt.Sprintf("%s/%s", artifact.Url, artifact.Metadata.Name)
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+	// post payload to each artifact
+	req, err := http.NewRequest("DELETE", url, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	response, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("%s", err)
+		os.Exit(1)
+	} else {
+		defer response.Body.Close()
+		contents, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			os.Exit(1)
+		}
+		fmt.Printf("%s\n", string(contents))
+		if response.StatusCode == 200 {
+			return true, err
+		}
+	}
+	return false, err
 }
 
-func createArtifact(artifact string, url string, token string, workspace string) {
+func existsArtifact(artifact Artifact, token string) (bool, error) {
+	url := fmt.Sprintf("%s/%s", artifact.Url, artifact.Metadata.Name)
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+	// post payload to each artifact
+	req, err := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	response, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("%s", err)
+		os.Exit(1)
+	} else {
+		defer response.Body.Close()
+		if response.StatusCode == 200 {
+			return true, err
+		}
+	}
+	return false, err
+}
+
+func createArtifact(artifact Artifact, token string) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 
-	file, e := ioutil.ReadFile(workspace + "/" + artifact)
-	fmt.Println(string(file))
-	if e != nil {
-		fmt.Println(e)
-		os.Exit(1)
-	}
 	// post payload to each artifact
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(file))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(artifact.Data))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	client := &http.Client{Transport: tr}
@@ -58,10 +95,30 @@ func createArtifact(artifact string, url string, token string, workspace string)
 
 }
 
+func readArtifactFromFile(workspace string, artifact string, apiserver string, namespace string) (Artifact, error) {
+	file, e := ioutil.ReadFile(workspace + "/" + artifact)
+	// fmt.Println(string(file))
+	if e != nil {
+		fmt.Println(e)
+		os.Exit(1)
+	}
+	artifact := Artifact{}
+	json.Unmarshal(file, &artifact)
+	artifact.Data = file
+	if artifact.Kind == "ReplicationController" {
+		artifact.Url = fmt.Sprintf("%s/api/v1/namespaces/%s/replicationcontrollers", apiserver, namespace)
+	}
+	if artifact.Kind == "Service" {
+		artifact.Url = fmt.Sprintf("%s/api/v1/namespaces/%s/services", apiserver, namespace)
+	}
+
+	return artifact, e
+}
+
 func main() {
 	var vargs = struct {
-		ReplicationControllers []string `json:"replicationcontrollers"`
-		Services               []string `json:"services"`
+		ReplicationControllers []string `json:replicationcontrollers`
+		Services               []string `json:services`
 		ApiServer              string   `json:apiserver`
 		Token                  string   `json:token`
 		Namespace              string   `json:namespace`
@@ -72,14 +129,15 @@ func main() {
 	plugin.Param("vargs", &vargs)
 	plugin.Parse()
 
-	rc_url := fmt.Sprintf("%s/api/v1/namespaces/%s/replicationcontrollers", vargs.ApiServer, vargs.Namespace)
-	svc_url := fmt.Sprintf("%s/api/v1/namespaces/%s/services", vargs.ApiServer, vargs.Namespace)
-
 	// Iterate over rcs and svcs
 	for _, rc := range vargs.ReplicationControllers {
-		createArtifact(rc, rc_url, vargs.Token, workspace.Path)
+		artifact, e := readArtifactFromFile(workspace, rc, vargs.ApiServer, vargs.Namespace)
+		if b, _ := existsArtifact(artifact, token); b {
+			deleteArtifact(artifact, token)
+		}
+		createArtifact(artifact, vargs.Token)
 	}
 	for _, rc := range vargs.Services {
-		createArtifact(rc, svc_url, vargs.Token, workspace.Path)
+		createArtifact(artifact, vargs.Token)
 	}
 }
