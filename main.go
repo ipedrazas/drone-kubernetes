@@ -20,6 +20,26 @@ type Artifact struct {
 	Url string
 }
 
+func zeroRcs(token string, artifact Artifact) (bool, error) {
+	reg, err := regexp.Compile(`"replicas": \d,`)
+	if err != nil {
+		log.Fatal(err)
+	}
+	json := reg.ReplaceAllString(string(artifact.Data), "\"replicas\": 0,")
+
+	req := ReqEnvelope{
+		Verb:  "PATCH",
+		Token: token,
+		Url:   fmt.Sprintf("%s/%s", artifact.Url, artifact.Metadata.Name),
+		Json:  []byte(json),
+	}
+	res, err := doRequest(req)
+	if err != nil {
+		fmt.Printf("%s", err)
+	}
+	return res, err
+}
+
 // Kubernetes API doesn't delete pods when deleting an RC
 // to cleanly remove the rc we have to set `replicas=0`
 // and then delete the RC
@@ -113,6 +133,47 @@ func readArtifactFromFile(workspace string, artifact string, apiserver string, n
 	}
 
 	return artifact, e
+}
+
+func doRequest(param ReqEnvelope) (bool, error) {
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+	var req *http.Request
+	var err error
+	// post payload to each artifact
+	if param.Json != nil {
+		req, err = http.NewRequest(param.Verb, param.Url, nil)
+	} else {
+		req, err = http.NewRequest(param.Verb, param.Url, bytes.NewBuffer(param.Json))
+	}
+
+	if debug {
+		fmt.Println("HTTP Request %s", param.Verb)
+		fmt.Println("HTTP Request %s", param.Url)
+		fmt.Println("HTTP Request %s", string(param.Json))
+	}
+
+	req.Header.Set("Authorization", "Bearer "+param.Token)
+	response, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("%s", err)
+		os.Exit(1)
+	} else {
+		defer response.Body.Close()
+		if debug {
+			contents, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				os.Exit(1)
+			}
+			fmt.Printf("%s\n", string(contents))
+		}
+		if response.StatusCode == 200 {
+			return true, err
+		}
+	}
+	return false, err
 }
 
 func main() {
