@@ -10,6 +10,18 @@ import (
 	"os"
 )
 
+var debug bool
+
+type WebHook struct {
+	timestamp int64
+	images    []string
+	namespace string
+	source    string
+	target    string
+	url       string
+	token     string
+}
+
 type Artifact struct {
 	ApiVersion string
 	Kind       string
@@ -72,24 +84,35 @@ func deleteArtifact(artifact Artifact, token string) (bool, error) {
 
 func existsArtifact(artifact Artifact, token string) (bool, error) {
 	url := fmt.Sprintf("%s/%s", artifact.Url, artifact.Metadata.Name)
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+
+	req := ReqEnvelope{
+		Verb:  "GET",
+		Token: token,
+		Url:   url,
 	}
-	client := &http.Client{Transport: tr}
-	// post payload to each artifact
-	req, err := http.NewRequest("GET", url, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	response, err := client.Do(req)
+	res, err := doRequest(req)
 	if err != nil {
 		fmt.Printf("%s", err)
-		os.Exit(1)
-	} else {
-		defer response.Body.Close()
-		if response.StatusCode == 200 {
-			return true, err
-		}
 	}
-	return false, err
+	return res, err
+	// tr := &http.Transport{
+	// 	TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	// }
+	// client := &http.Client{Transport: tr}
+	// post payload to each artifact
+	// req, err := http.NewRequest("GET", url, nil)
+	// req.Header.Set("Authorization", "Bearer "+token)
+	// response, err := client.Do(req)
+	// if err != nil {
+	// 	fmt.Printf("%s", err)
+	// 	os.Exit(1)
+	// } else {
+	// 	defer response.Body.Close()
+	// 	if response.StatusCode == 200 {
+	// 		return true, err
+	// 	}
+	// }
+	// return false, err
 }
 
 func createArtifact(artifact Artifact, token string) {
@@ -106,6 +129,8 @@ func createArtifact(artifact Artifact, token string) {
 	if err != nil {
 		panic(err)
 	}
+	deployments = append(deployments, artifact.Metadata.Name)
+
 	defer resp.Body.Close()
 	contents, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
@@ -176,6 +201,28 @@ func doRequest(param ReqEnvelope) (bool, error) {
 	return false, err
 }
 
+func makeTimestamp() int64 {
+	return time.Now().UnixNano() / int64(time.Millisecond)
+}
+
+func sendWebhook(wh WebHook) {
+
+	jwh, err := json.Marshal(wh)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	req := ReqEnvelope{
+		Verb:  "POST",
+		Token: wh.token,
+		Url:   wh.url,
+		Json:  []byte(jwh),
+	}
+	doRequest(param)
+}
+
+var deployments []string
+
 func main() {
 	var vargs = struct {
 		ReplicationControllers []string `json:replicationcontrollers`
@@ -183,6 +230,10 @@ func main() {
 		ApiServer              string   `json:apiserver`
 		Token                  string   `json:token`
 		Namespace              string   `json:namespace`
+		Debug                  string   `json:debug`
+		Webhook                string   `json:webhook`
+		Source                 string   `json:source`
+		WebHookToken           string   `json:webhook_token`
 	}{}
 
 	workspace := plugin.Workspace{}
@@ -201,4 +252,14 @@ func main() {
 	for _, rc := range vargs.Services {
 		createArtifact(artifact, vargs.Token)
 	}
+	wh := WebHook{
+		timestamp: makeTimestamp(),
+		images:    deployments,
+		namespace: vargs.Namespace,
+		source:    vargs.Source,
+		target:    vargs.ApiServer,
+		url:       vargs.Webhook,
+		token:     vargs.WebHookToken,
+	}
+	sendWebhook(wh)
 }
