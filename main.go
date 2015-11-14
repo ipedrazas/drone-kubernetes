@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"github.com/drone/drone-plugin-go/plugin"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"regexp"
+	"time"
 )
 
 var debug bool
@@ -20,6 +23,13 @@ type WebHook struct {
 	target    string
 	url       string
 	token     string
+}
+
+type ReqEnvelope struct {
+	Verb  string
+	Token string
+	Json  []byte
+	Url   string
 }
 
 type Artifact struct {
@@ -35,7 +45,8 @@ type Artifact struct {
 func zeroRcs(token string, artifact Artifact) (bool, error) {
 	reg, err := regexp.Compile(`"replicas": \d,`)
 	if err != nil {
-		log.Fatal(err)
+		fmt.Printf("%s", err)
+		os.Exit(1)
 	}
 	json := reg.ReplaceAllString(string(artifact.Data), "\"replicas\": 0,")
 
@@ -70,7 +81,7 @@ func deleteArtifact(artifact Artifact, token string) (bool, error) {
 		os.Exit(1)
 	} else {
 		defer response.Body.Close()
-		contents, err := ioutil.ReadAll(resp.Body)
+		contents, err := ioutil.ReadAll(response.Body)
 		if err != nil {
 			os.Exit(1)
 		}
@@ -83,65 +94,30 @@ func deleteArtifact(artifact Artifact, token string) (bool, error) {
 }
 
 func existsArtifact(artifact Artifact, token string) (bool, error) {
-	url := fmt.Sprintf("%s/%s", artifact.Url, artifact.Metadata.Name)
+	aUrl := fmt.Sprintf("%s/%s", artifact.Url, artifact.Metadata.Name)
 
 	req := ReqEnvelope{
-		Verb:  "GET",
+		Url:   aUrl,
 		Token: token,
-		Url:   url,
+		Verb:  "GET",
 	}
-	res, err := doRequest(req)
-	if err != nil {
-		fmt.Printf("%s", err)
-	}
-	return res, err
-	// tr := &http.Transport{
-	// 	TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	// }
-	// client := &http.Client{Transport: tr}
-	// post payload to each artifact
-	// req, err := http.NewRequest("GET", url, nil)
-	// req.Header.Set("Authorization", "Bearer "+token)
-	// response, err := client.Do(req)
-	// if err != nil {
-	// 	fmt.Printf("%s", err)
-	// 	os.Exit(1)
-	// } else {
-	// 	defer response.Body.Close()
-	// 	if response.StatusCode == 200 {
-	// 		return true, err
-	// 	}
-	// }
-	// return false, err
+	return doRequest(req)
+
 }
 
 func createArtifact(artifact Artifact, token string) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	param := ReqEnvelope{
+		Url:   artifact.Url,
+		Token: token,
+		Json:  artifact.Data,
+		Verb:  "POST",
 	}
-
-	// post payload to each artifact
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(artifact.Data))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-	client := &http.Client{Transport: tr}
-	resp, err := client.Do(req)
-	if err != nil {
-		panic(err)
-	}
-	deployments = append(deployments, artifact.Metadata.Name)
-
-	defer resp.Body.Close()
-	contents, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		os.Exit(1)
-	}
-	fmt.Printf("%s\n", string(contents))
+	doRequest(param)
 
 }
 
-func readArtifactFromFile(workspace string, artifact string, apiserver string, namespace string) (Artifact, error) {
-	file, e := ioutil.ReadFile(workspace + "/" + artifact)
+func readArtifactFromFile(workspace string, artifactFile string, apiserver string, namespace string) (Artifact, error) {
+	file, e := ioutil.ReadFile(workspace + "/" + artifactFile)
 	// fmt.Println(string(file))
 	if e != nil {
 		fmt.Println(e)
@@ -218,7 +194,7 @@ func sendWebhook(wh WebHook) {
 		Url:   wh.url,
 		Json:  []byte(jwh),
 	}
-	doRequest(param)
+	doRequest(req)
 }
 
 var deployments []string
@@ -243,7 +219,7 @@ func main() {
 
 	// Iterate over rcs and svcs
 	for _, rc := range vargs.ReplicationControllers {
-		artifact, e := readArtifactFromFile(workspace, rc, vargs.ApiServer, vargs.Namespace)
+		artifact, e := readArtifactFromFile(&workspace, rc, vargs.ApiServer, vargs.Namespace)
 		if b, _ := existsArtifact(artifact, token); b {
 			deleteArtifact(artifact, token)
 		}
