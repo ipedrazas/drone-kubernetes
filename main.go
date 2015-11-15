@@ -9,7 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"regexp"
+	// "regexp"
 	"time"
 )
 
@@ -43,13 +43,14 @@ type Artifact struct {
 }
 
 func zeroRcs(token string, artifact Artifact) (bool, error) {
-	reg, err := regexp.Compile(`"replicas": \d,`)
-	if err != nil {
-		fmt.Printf("%s", err)
-		os.Exit(1)
-	}
-	json := reg.ReplaceAllString(string(artifact.Data), "\"replicas\": 0,")
+	// reg, err := regexp.Compile(`"replicas": \d,`)
+	// if err != nil {
+	// 	fmt.Printf("%s", err)
+	// 	os.Exit(1)
+	// }
+	// json := reg.ReplaceAllString(string(artifact.Data), "\"replicas\": 0,")
 
+	json := `{"spec": {"replicas": 1}}`
 	req := ReqEnvelope{
 		Verb:  "PATCH",
 		Token: token,
