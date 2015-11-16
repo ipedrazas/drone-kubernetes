@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	// "regexp"
 	"time"
 )
 
@@ -42,15 +41,9 @@ type Artifact struct {
 	Url string
 }
 
-func zeroRcs(token string, artifact Artifact) (bool, error) {
-	// reg, err := regexp.Compile(`"replicas": \d,`)
-	// if err != nil {
-	// 	fmt.Printf("%s", err)
-	// 	os.Exit(1)
-	// }
-	// json := reg.ReplaceAllString(string(artifact.Data), "\"replicas\": 0,")
+func zeroReplicas(artifact Artifact, token string) (bool, error) {
 
-	json := `{"spec": {"replicas": 1}}`
+	json := `{"spec": {"replicas": 0}}`
 	req := ReqEnvelope{
 		Verb:  "PATCH",
 		Token: token,
@@ -61,32 +54,73 @@ func zeroRcs(token string, artifact Artifact) (bool, error) {
 	if err != nil {
 		fmt.Printf("%s", err)
 	}
+	time.Sleep(time.Second * 5)
 	return res, err
 }
 
-// Kubernetes API doesn't delete pods when deleting an RC
-// to cleanly remove the rc we have to set `replicas=0`
-// and then delete the RC
 func deleteArtifact(artifact Artifact, token string) (bool, error) {
+	res, e := zeroReplicas(artifact, token)
+	if e != nil {
+		fmt.Printf("%s", e)
+		os.Exit(1)
+	}
+	if res {
+		if debug {
+			fmt.Println("Replicas set to Zero")
+		}
+	}
+
 	url := fmt.Sprintf("%s/%s", artifact.Url, artifact.Metadata.Name)
+	if debug {
+		log.Println(url)
+	}
+	param := ReqEnvelope{
+		Url:   url,
+		Token: token,
+		Verb:  "DELETE",
+	}
+	return doRequest(param)
+}
+
+func doRequest(param ReqEnvelope) (bool, error) {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	client := &http.Client{Transport: tr}
+	var req *http.Request
+	var err error
 	// post payload to each artifact
-	req, err := http.NewRequest("DELETE", url, nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	response, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("%s", err)
-		os.Exit(1)
+	if param.Json == nil {
+		req, err = http.NewRequest(param.Verb, param.Url, nil)
 	} else {
-		defer response.Body.Close()
+		req, err = http.NewRequest(param.Verb, param.Url, bytes.NewBuffer(param.Json))
+	}
+
+	if param.Verb == "PATCH" {
+		req.Header.Set("Content-Type", "application/strategic-merge-patch+json ")
+	}
+	if debug {
+		fmt.Println("HTTP Request %s", param.Verb)
+		fmt.Println("HTTP Request %s", param.Url)
+		fmt.Println("HTTP Request %s", string(param.Json))
+	}
+
+	req.Header.Set("Authorization", "Bearer "+param.Token)
+	response, err := client.Do(req)
+	if debug {
 		contents, err := ioutil.ReadAll(response.Body)
 		if err != nil {
 			os.Exit(1)
 		}
 		fmt.Printf("%s\n", string(contents))
+	}
+
+	if err != nil {
+		fmt.Printf("%s", err)
+		os.Exit(1)
+	} else {
+		defer response.Body.Close()
+
 		if response.StatusCode == 200 {
 			return true, err
 		}
@@ -135,47 +169,6 @@ func readArtifactFromFile(workspace string, artifactFile string, apiserver strin
 	}
 
 	return artifact, e
-}
-
-func doRequest(param ReqEnvelope) (bool, error) {
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	client := &http.Client{Transport: tr}
-	var req *http.Request
-	var err error
-	// post payload to each artifact
-	if param.Json != nil {
-		req, err = http.NewRequest(param.Verb, param.Url, nil)
-	} else {
-		req, err = http.NewRequest(param.Verb, param.Url, bytes.NewBuffer(param.Json))
-	}
-
-	if debug {
-		fmt.Println("HTTP Request %s", param.Verb)
-		fmt.Println("HTTP Request %s", param.Url)
-		fmt.Println("HTTP Request %s", string(param.Json))
-	}
-
-	req.Header.Set("Authorization", "Bearer "+param.Token)
-	response, err := client.Do(req)
-	if err != nil {
-		fmt.Printf("%s", err)
-		os.Exit(1)
-	} else {
-		defer response.Body.Close()
-		if debug {
-			contents, err := ioutil.ReadAll(response.Body)
-			if err != nil {
-				os.Exit(1)
-			}
-			fmt.Printf("%s\n", string(contents))
-		}
-		if response.StatusCode == 200 {
-			return true, err
-		}
-	}
-	return false, err
 }
 
 func makeTimestamp() int64 {
