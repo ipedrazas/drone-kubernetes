@@ -102,7 +102,10 @@ func doRequest(param ReqEnvelope) (bool, error) {
 
 	if param.Verb == "PATCH" {
 		req.Header.Set("Content-Type", "application/strategic-merge-patch+json ")
+	} else {
+		req.Header.Set("Content-Type", "application/json ")
 	}
+
 	if debug {
 		log.Println("HTTP Request %s", param.Verb)
 		log.Println("HTTP Request %s", param.Url)
