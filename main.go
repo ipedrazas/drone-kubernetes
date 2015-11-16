@@ -145,6 +145,7 @@ func existsArtifact(artifact Artifact, token string) (bool, error) {
 }
 
 func createArtifact(artifact Artifact, token string) {
+	deployments = append(deployments, artifact.Metadata.Name)
 	param := ReqEnvelope{
 		Url:   artifact.Url,
 		Token: token,
