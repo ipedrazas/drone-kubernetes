@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"github.com/drone/drone-plugin-go/plugin"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -52,21 +54,23 @@ func zeroReplicas(artifact Artifact, token string) (bool, error) {
 	}
 	res, err := doRequest(req)
 	if err != nil {
-		fmt.Printf("%s", err)
+		log.Panic("%s", err)
 	}
 	time.Sleep(time.Second * 5)
 	return res, err
 }
 
 func deleteArtifact(artifact Artifact, token string) (bool, error) {
-	res, e := zeroReplicas(artifact, token)
-	if e != nil {
-		fmt.Printf("%s", e)
-		os.Exit(1)
-	}
-	if res {
-		if debug {
-			fmt.Println("Replicas set to Zero")
+	if strings.Contains(artifact.Kind, "ReplicationController") {
+		res, e := zeroReplicas(artifact, token)
+		if e != nil {
+			log.Panic("%s", e)
+			os.Exit(1)
+		}
+		if res {
+			if debug {
+				log.Println("Replicas set to Zero")
+			}
 		}
 	}
 
@@ -100,9 +104,9 @@ func doRequest(param ReqEnvelope) (bool, error) {
 		req.Header.Set("Content-Type", "application/strategic-merge-patch+json ")
 	}
 	if debug {
-		fmt.Println("HTTP Request %s", param.Verb)
-		fmt.Println("HTTP Request %s", param.Url)
-		fmt.Println("HTTP Request %s", string(param.Json))
+		log.Println("HTTP Request %s", param.Verb)
+		log.Println("HTTP Request %s", param.Url)
+		log.Println("HTTP Request %s", string(param.Json))
 	}
 
 	req.Header.Set("Authorization", "Bearer "+param.Token)
@@ -112,11 +116,11 @@ func doRequest(param ReqEnvelope) (bool, error) {
 		if err != nil {
 			os.Exit(1)
 		}
-		fmt.Printf("%s\n", string(contents))
+		log.Printf("%s\n", string(contents))
 	}
 
 	if err != nil {
-		fmt.Printf("%s", err)
+		log.Panic("%s", err)
 		os.Exit(1)
 	} else {
 		defer response.Body.Close()
@@ -155,7 +159,7 @@ func readArtifactFromFile(workspace string, artifactFile string, apiserver strin
 	file, e := ioutil.ReadFile(workspace + "/" + artifactFile)
 	// fmt.Println(string(file))
 	if e != nil {
-		fmt.Println(e)
+		log.Panic(e)
 		os.Exit(1)
 	}
 	artifact := Artifact{}
@@ -179,7 +183,7 @@ func sendWebhook(wh WebHook) {
 
 	jwh, err := json.Marshal(wh)
 	if err != nil {
-		fmt.Println(err)
+		log.Panic(err)
 		return
 	}
 	req := ReqEnvelope{
@@ -213,13 +217,23 @@ func main() {
 
 	// Iterate over rcs and svcs
 	for _, rc := range vargs.ReplicationControllers {
-		artifact, e := readArtifactFromFile(&workspace, rc, vargs.ApiServer, vargs.Namespace)
-		if b, _ := existsArtifact(artifact, token); b {
-			deleteArtifact(artifact, token)
+		artifact, err := readArtifactFromFile(workspace.Path, rc, vargs.ApiServer, vargs.Namespace)
+		if err != nil {
+			log.Panic(err)
+			return
+		}
+		if b, _ := existsArtifact(artifact, vargs.Token); b {
+			deleteArtifact(artifact, vargs.Token)
+			time.Sleep(time.Second * 5)
 		}
 		createArtifact(artifact, vargs.Token)
 	}
 	for _, rc := range vargs.Services {
+		artifact, err := readArtifactFromFile(workspace.Path, rc, vargs.ApiServer, vargs.Namespace)
+		if err != nil {
+			log.Panic(err)
+			return
+		}
 		createArtifact(artifact, vargs.Token)
 	}
 	wh := WebHook{
