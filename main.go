@@ -17,13 +17,13 @@ import (
 var debug bool
 
 type WebHook struct {
-	timestamp int64
-	images    []string
-	namespace string
-	source    string
-	target    string
-	url       string
-	token     string
+	Timestamp int64
+	Images    []string
+	Namespace string
+	Source    string
+	Target    string
+	Url       string
+	Token     string
 }
 
 type ReqEnvelope struct {
@@ -179,7 +179,7 @@ func makeTimestamp() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
 }
 
-func sendWebhook(wh WebHook) {
+func sendWebhook(wh *WebHook) {
 
 	jwh, err := json.Marshal(wh)
 	if err != nil {
@@ -236,14 +236,14 @@ func main() {
 		}
 		createArtifact(artifact, vargs.Token)
 	}
-	wh := WebHook{
-		timestamp: makeTimestamp(),
-		images:    deployments,
-		namespace: vargs.Namespace,
-		source:    vargs.Source,
-		target:    vargs.ApiServer,
-		url:       vargs.Webhook,
-		token:     vargs.WebHookToken,
+	wh := &WebHook{
+		Timestamp: makeTimestamp(),
+		Images:    deployments,
+		Namespace: vargs.Namespace,
+		Source:    vargs.Source,
+		Target:    vargs.ApiServer,
+		Url:       vargs.Webhook,
+		Token:     vargs.WebHookToken,
 	}
 	sendWebhook(wh)
 }
