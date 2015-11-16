@@ -188,8 +188,8 @@ func sendWebhook(wh *WebHook) {
 	}
 	req := ReqEnvelope{
 		Verb:  "POST",
-		Token: wh.token,
-		Url:   wh.url,
+		Token: wh.Token,
+		Url:   wh.Url,
 		Json:  []byte(jwh),
 	}
 	doRequest(req)
